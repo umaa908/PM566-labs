@@ -1,0 +1,149 @@
+---
+title:  "PM 566 Lab 3"
+author: "Uma Agarwal"
+format: 
+  html: 
+    embed-resources: true
+editor: source
+---
+
+#1
+
+```{r}
+met <- read.csv("/Users/umaagarwal/MyDocuments/USC/PM566/PM566-labs/data/met_all.gz")
+```
+
+#2
+
+```{r}
+dim(met)
+head(met)
+tail(met)
+```
+
+#3
+
+```{r}
+str(met)
+```
+
+#4
+
+```{r}
+table(met$year)
+table(met$day)
+table(met$hour)
+summary(met$temp)
+summary(met$elev)
+summary(met$wind.sp)
+
+# replace 9999 elevation w/ NA
+met$elev[met$elev == 9999.0] <- NA
+summary(met$elev)
+
+# remove -40C outlier
+met <- met[ met$temp > -40, ]
+met2 <- met[order(met$temp), ]
+head(met2)
+summary(met$temp)
+```
+
+#5
+
+```{r}
+# where -17.2C value comes from
+met$elev[which.min(met$temp)]
+range(met$elev, na.rm = TRUE)
+
+# remove -17.2C value
+met <- met[met$temp > -15, ]
+met2 <- met[order(met$temp), ]
+head(met2)
+summary(met$temp)
+```
+
+#6
+
+```{r}
+elev <- met[met$elev == max(met$elev, na.rm = TRUE), ]
+summary(elev)
+
+cor(elev$temp, elev$wind.sp, use="complete")
+cor(elev$temp, elev$hour, use="complete")
+cor(elev$wind.sp, elev$day, use="complete")
+cor(elev$wind.sp, elev$hour, use="complete")
+cor(elev$temp, elev$day, use="complete")
+```
+
+#7
+
+Temperature ranged from 2-10C, while wind speed ranges from 0-15mph. Temperature ranges remain relatively constant throughout the month, while wind speed range tends to fluctuate more throughout the month. There is a period of sustained higher wind speed from Aug 12-19, and another peak around Aug 26.
+
+```{r}
+hist(met$elev, breaks=100)
+hist(met$temp)
+hist(met$wind.sp)
+```
+
+```{r}
+library(leaflet)
+
+leaflet(elev) %>%
+  addProviderTiles('OpenStreetMap') %>% 
+  addCircles(lat=~lat,lng=~lon, opacity=1, fillOpacity=1, radius=100)
+```
+
+```{r}
+library(lubridate)
+
+elev$date <- with(elev, ymd_h(paste(year, month, day, hour, sep= ' ')))
+summary(elev$date)
+
+elev <- elev[order(!is.na(elev$date)), ]
+head(elev)
+```
+
+```{r}
+plot(elev$date, elev$temp, type='l')
+plot(elev$date, elev$wind.sp, type='l')
+```
+
+#8
+
+I decided to investigate the weather station at Death Valley due to its desert location and its reputation for having extreme meteorological conditions. I wanted to understand how relative humidity and atmospheric pressure would fluctuate compared to temperature over time.
+
+Utilizing similar techniques from above, I first subsetted the met data by USAFID (based on a quick Google search) to get all the Death Valley data. Then I created a date-time variable for the x-axis. Finally, I plotted the three variables of interest against the date-time parameter and stacked these plots so that peaks and fluctuations could be easily compared between the plots.
+
+From the plots, it appears that temperature ranged from approximately 20-45C for most of the month, with a sharp spike to 55C at the end of Aug. Atmospheric pressure seemed relatively constant for the first half of the month, and it dipped and spiked during the second half of the month. Relative humidity had a large spike towards the end of the month that seems to line up with the spike in atmospheric pressure at that time.
+
+If you draw vertical lines from the peaks and troughs of the temperature plot so that it overlaps the other two plots (I did this manually with a ruler since I could not get it to work in R), you can see that the peaks in the temperature plot (which likely corresponds with daytime highs) line up exactly with the troughs of the atmospheric pressure plot and the peaks of the relative humidity plot. This seems to suggest that while temperature and humidity peak during the day and reach their lowest points at night, atmospheric pressure has an opposite trend and instead peaks during the nights. This finding brings me back to my chemistry days in undergrad when we learned that, as per the gas laws, temperature and pressure indeed have an inverse relationship.
+
+```{r}
+library(tidyverse)
+
+# death valley subset
+deathval <-
+  met %>%
+  filter(USAFID == 690150)
+summary(deathval)
+
+# map to confirm location
+leaflet(deathval) %>%
+  addProviderTiles('OpenStreetMap') %>% 
+  addCircles(lat=~lat,lng=~lon, opacity=1, fillOpacity=1, radius=100)
+
+# date-time variable
+deathval$date <- with(deathval, ymd_h(paste(year, month, day, hour, sep= ' ')))
+summary(deathval$date)
+
+deathval <- deathval[order(!is.na(deathval$date)), ]
+head(deathval)
+
+# stacked plots
+par(mfrow = c(3,1), mar = c(0, 4, 2, 1))
+
+plot(deathval$date, deathval$rh, type = "l", xaxt = "n", main = "rh")
+plot(deathval$date, deathval$atm.press, type = "l", xaxt = "n", main = "atm pressure")
+par(mar = c(4, 4, 2, 1))
+plot(deathval$date, deathval$temp, type = "l", main = "temp", xlab = "date")
+```
