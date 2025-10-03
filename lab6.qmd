@@ -1,0 +1,137 @@
+---
+title: "PM 566 Lab 6"
+author: "Uma Agarwal"
+format: 
+  html: 
+    embed-resources: true
+editor: source
+---
+
+```{r}
+library(tidyverse)
+library(tidytext)
+
+mt_samples <- read_csv("https://raw.githubusercontent.com/USCbiostats/data-science-data/master/00_mtsamples/mtsamples.csv")
+mt_samples <- mt_samples |>
+  select(description, medical_specialty, transcription)
+head(mt_samples)
+```
+
+#1
+
+There are 40 different specialties/categories. Some of these categories are not medical specialties; some of them are types of note/records, such as SOAP notes and discharge summaries. The medical specialties seem mostly independent, but there are definitely some that are more related, such as neurology and neurosurgery. The surgery category has the most observations, at over 1000 observations. The majority of the rest of the categories have at least a few dozen to several hundred observations.
+
+```{r}
+mt_samples %>%
+  count(medical_specialty, sort = T)
+```
+
+#2
+
+Here we see that the most common word by far is "the", followed by "was" and "and." Only the word "patient" gives us any clue that these words came from medical transcription data rather than any other text document in the English language.
+
+```{r}
+top_20 <- mt_samples %>%
+  unnest_tokens(word, transcription) %>%
+  count(word, sort = T) %>%
+  top_n(20, n)
+
+top_20 %>%
+  ggplot(aes(x = n, y = reorder(word, n))) +
+  geom_col() +
+  labs(x = "Count", y = "Word", title = "Top 20 Words")
+```
+
+#3
+
+Here we see that the top 20 words are more unique and informative; we can definitely tell that these came from medical documentation. Words like "anesthesia", "incision", and "performed" suggest that much of this documentation comes from records relating to surgical procedures.
+
+\*Note that the word "right" is a stopword and consequently has to be filtered from anti_join() to remain included in the final count.
+
+```{r}
+top_20 <- mt_samples %>%
+  unnest_tokens(word, transcription) %>%
+  anti_join(stop_words %>% filter(!word %in% c("right", "left")), 
+            by = "word") %>%
+  filter(!str_detect(word, "^[0-9]+$")) %>% # remove #'s
+  count(word, sort = T) %>%
+  top_n(20, n)
+
+top_20 %>%
+  ggplot(aes(x = n, y = reorder(word, n))) +
+  geom_col() +
+  labs(x = "Count", y = "Word", 
+       title = "Top 20 Words w/o Stopwords & Numbers")
+```
+
+#4
+
+When tokenized into bigrams, "the patient" is the most common phrase. All of the top 20 phrases make sense grammatically. Many of the bigrams are made up fully of stopwords.
+
+When tokenized into trigrams, the phrases become much more informative compared to when they were tokenized into bigrams. Compared to when the top 20 bigrams were made up of only stopwords, the top 20 trigrams contain much more information pertaining to medical language and procedure.
+
+```{r}
+top_20_ngrams <- mt_samples %>%
+  unnest_ngrams(ngram, transcription, 2) %>%
+  count(ngram, sort = T) %>%
+  top_n(20, n)
+  
+top_20_ngrams %>%
+  ggplot(aes(x = n, y = reorder(ngram, n))) +
+  geom_col() +
+  labs(x = "Count", y = "Phrase", 
+       title = "Top 20 Bigram Phrases")
+
+top_20_ngrams <- mt_samples %>%
+  unnest_ngrams(ngram, transcription, 3) %>%
+  count(ngram, sort = T) %>%
+  top_n(20, n) 
+
+top_20_ngrams %>%
+  ggplot(aes(x = n, y = reorder(ngram, n))) +
+  geom_col() +
+  labs(x = "Count", y = "Phrase", 
+       title = "Top 20 Trigram Phrases")
+```
+
+#5
+
+The word "patient" was chosen as it appears in the top bigram phrase and the top 2 trigram phrases. This reveals several verbs that "patient" does or has done on themself, such as "denies" and "tolerated".
+
+```{r}
+mt_samples %>%
+  unnest_tokens(bigram, transcription, token = "ngrams", n = 2) %>%
+  separate(bigram, c("word1", "word2"), sep = " ") %>%
+  filter(word1 == "patient" | word2 == "patient") %>%
+  count(word1, word2, sort = T)
+```
+
+#6
+
+The top 5 words in each specialty reveal the focus of each specialty. For example, the top 5 words from the Allergy specialty contain "nasal" and "allergies", the top 5 words from the Autopsy specialty contain several words related to anatomy, such as "right", "left", "neck", and "anterior", etc.
+
+```{r}
+top_5_spec <- mt_samples %>%
+  unnest_tokens(word, transcription) %>%
+  anti_join(stop_words %>% filter(!word %in% c("right", "left")), 
+            by = "word") %>%
+  filter(!grepl("^[0-9]+$", word)) %>% # remove #'s
+  group_by(medical_specialty) %>%
+  count(word, sort = T) %>%
+  top_n(5, n) %>%
+  arrange(medical_specialty, desc(n))
+```
+
+#7
+
+Here, I utilized TF_IDF to get the top 5 most unique words from each medical specialty. Now, words like "pain", "patient", and "history" are excluded since they are common among many of the specialties. This reveals more specific words that shed light on the nature of each specialty. The word with the highest TF_IDF is "carbohydrate" in the Diets and Nutrition specialty.
+
+```{r}
+spec_diff <- mt_samples %>%
+  unnest_tokens(word, transcription) %>%
+  group_by(medical_specialty) %>%
+  count(word, sort = T) %>%
+  bind_tf_idf(word, medical_specialty, n) %>%
+  group_by(medical_specialty) %>%
+  slice_max(tf_idf, n = 5)
+```
